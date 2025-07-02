@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Usuários</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .table-icon { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+        .password-cell { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .modal { transition: opacity 0.25s ease; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- NOVO: Modal para Editar Usuário -->
+    <div id="edit-user-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="relative mx-auto p-8 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <h3 class="text-2xl font-semibold text-center mb-6">Editar Usuário</h3>
+            <form id="edit-user-form">
+                <input type="hidden" id="edit-user-id">
+                <div class="space-y-4">
+                    <div>
+                        <label for="edit-nome" class="block text-sm font-medium text-gray-700">Nome</label>
+                        <input type="text" id="edit-nome" class="mt-1 w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="edit-email" class="block text-sm font-medium text-gray-700">Email</label>
+                        <input type="email" id="edit-email" class="mt-1 w-full px-4 py-2 border rounded-lg">
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end space-x-4">
+                     <button type="button" onclick="closeEditModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
+                     <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NOVO: Modal para Resetar Senha -->
+    <div id="reset-password-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="relative mx-auto p-8 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <h3 class="text-2xl font-semibold text-center mb-6">Resetar Senha</h3>
+            <form id="reset-password-form">
+                <input type="hidden" id="reset-user-id">
+                <p class="text-center text-gray-600 mb-4">Defina uma nova senha para <strong id="reset-user-name"></strong>.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label for="reset-new-password" class="block text-sm font-medium text-gray-700">Nova Senha</label>
+                        <input type="password" id="reset-new-password" required class="mt-1 w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    <div>
+                        <label for="reset-confirm-password" class="block text-sm font-medium text-gray-700">Repita a Nova Senha</label>
+                        <input type="password" id="reset-confirm-password" required class="mt-1 w-full px-4 py-2 border rounded-lg">
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end space-x-4">
+                     <button type="button" onclick="closeResetPasswordModal()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancelar</button>
+                     <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Usuários Cadastrados</h1>
+            <div class="flex items-center space-x-4">
+                <button id="edit-mode-toggle" class="hidden px-4 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition">Modo de Edição: OFF</button>
+                <a id="profile-link" href="#" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition">Meu Perfil</a>
+            </div>
+        </header>
+
+        <div class="bg-white p-6 rounded-xl shadow-md">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ícone</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nome</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Senha (Criptografada)</th>
+                            <th id="admin-actions-header" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-list" class="bg-white divide-y divide-gray-200">
+                        <!-- Usuários serão inseridos aqui -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="text-center mt-6">
+            <a href="index.html" class="text-gray-500 hover:text-blue-600 text-sm">&larr; Cadastrar novo usuário</a>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8080/api/users';
+        const userList = document.getElementById('user-list');
+        const profileLink = document.getElementById('profile-link');
+        const adminActionsHeader = document.getElementById('admin-actions-header');
+        const editModeToggle = document.getElementById('edit-mode-toggle');
+        
+        // Elementos dos Modais
+        const editUserModal = document.getElementById('edit-user-modal');
+        const editUserForm = document.getElementById('edit-user-form');
+        const resetPasswordModal = document.getElementById('reset-password-modal');
+        const resetPasswordForm = document.getElementById('reset-password-form');
+
+        const params = new URLSearchParams(window.location.search);
+        const currentUserId = params.get('userId');
+        const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+        let isEditMode = false;
+
+        if (currentUserId) { profileLink.href = `profile.html?id=${currentUserId}`; }
+        if (isAdmin) { editModeToggle.classList.remove('hidden'); }
+
+        editModeToggle.addEventListener('click', () => {
+            isEditMode = !isEditMode;
+            editModeToggle.textContent = `Modo de Edição: ${isEditMode ? 'ON' : 'OFF'}`;
+            editModeToggle.classList.toggle('bg-red-600', !isEditMode);
+            editModeToggle.classList.toggle('bg-green-600', isEditMode);
+            fetchUsers();
+        });
+
+        async function fetchUsers() {
+            try {
+                const response = await fetch(API_URL);
+                const users = await response.json();
+                userList.innerHTML = '';
+                adminActionsHeader.classList.toggle('hidden', !isEditMode);
+
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    const defaultIcon = 'https://placehold.co/40x40/E2E8F0/4A5568?text=:)';
+                    
+                    let adminActions = '';
+                    if (isAdmin && isEditMode) {
+                        // Onclick agora chama as funções do modal
+                        adminActions = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
+                                <button onclick='openEditModal(${JSON.stringify(user)})' class="text-indigo-600 hover:text-indigo-900">Editar</button>
+                                <button onclick='openResetPasswordModal(${JSON.stringify(user)})' class="text-yellow-600 hover:text-yellow-900">Resetar Senha</button>
+                                <button onclick="deleteUser('${user.id}', '${user.nome}')" class="text-red-600 hover:text-red-900">Deletar</button>
+                            </td>
+                        `;
+                    }
+
+                    row.innerHTML = `
+                        <td class="px-6 py-4"><img src="${user.iconeBase64 || defaultIcon}" alt="Ícone" class="table-icon"></td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${user.nome}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${user.email}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500"><div class="password-cell" title="${user.senha}">${user.senha}</div></td>
+                        ${adminActions}
+                    `;
+                    userList.appendChild(row);
+                });
+            } catch (error) { console.error('Falha ao buscar usuários:', error); }
+        }
+
+        // --- Funções para controlar os Modais ---
+        function openEditModal(user) {
+            document.getElementById('edit-user-id').value = user.id;
+            document.getElementById('edit-nome').value = user.nome;
+            document.getElementById('edit-email').value = user.email;
+            editUserModal.classList.remove('hidden');
+            editUserModal.classList.add('flex');
+        }
+        function closeEditModal() {
+            editUserModal.classList.add('hidden');
+            editUserModal.classList.remove('flex');
+        }
+        function openResetPasswordModal(user) {
+            document.getElementById('reset-user-id').value = user.id;
+            document.getElementById('reset-user-name').textContent = user.nome;
+            resetPasswordModal.classList.remove('hidden');
+            resetPasswordModal.classList.add('flex');
+        }
+        function closeResetPasswordModal() {
+            resetPasswordModal.classList.add('hidden');
+            resetPasswordModal.classList.remove('flex');
+            resetPasswordForm.reset();
+        }
+
+        // --- Lógica de Submissão dos Forms dos Modais ---
+        editUserForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-user-id').value;
+            const updatedData = {
+                nome: document.getElementById('edit-nome').value,
+                email: document.getElementById('edit-email').value,
+            };
+            try {
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(updatedData)
+                });
+                if (!response.ok) throw new Error('Falha ao atualizar usuário.');
+                alert('Usuário atualizado com sucesso!');
+                closeEditModal();
+                fetchUsers();
+            } catch (error) { alert(error.message); }
+        });
+
+        resetPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('reset-user-id').value;
+            const newPassword = document.getElementById('reset-new-password').value;
+            const confirmPassword = document.getElementById('reset-confirm-password').value;
+
+            if (newPassword !== confirmPassword) {
+                alert('As senhas não coincidem!');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_URL}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ senha: newPassword })
+                });
+                if (!response.ok) throw new Error('Falha ao resetar a senha.');
+                alert(`Senha alterada com sucesso!`);
+                closeResetPasswordModal();
+                fetchUsers();
+            } catch (error) { alert(error.message); }
+        });
+
+        async function deleteUser(id, name) {
+            if (confirm(`Tem certeza que deseja deletar o usuário ${name}?`)) {
+                try {
+                    const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Falha ao deletar.');
+                    alert('Usuário deletado com sucesso!');
+                    fetchUsers();
+                } catch (error) { alert('Erro ao deletar usuário.'); }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', fetchUsers);
+    </script>
+</body>
+</html>
